@@ -20,6 +20,8 @@ import (
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo-contrib/session"
 	echolog "github.com/labstack/gommon/log"
+	"github.com/newrelic/go-agent/v3/newrelic"
+	"github.com/newrelic/go-agent/v3/integrations/nrecho-v4"
 )
 
 const (
@@ -122,6 +124,22 @@ func main() {
 	e := echo.New()
 	e.Debug = true
 	e.Logger.SetLevel(echolog.DEBUG)
+
+	// New Relic初期化
+	var app *newrelic.Application
+	var err error
+	app, err = newrelic.NewApplication(
+		newrelic.ConfigAppName(os.Getenv("NEW_RELIC_APP_NAME")),
+		newrelic.ConfigLicense(os.Getenv("NEW_RELIC_LICENSE_KEY")),
+    	newrelic.ConfigAppLogEnabled(false),
+	)
+	if err != nil {
+       fmt.Errorf("failed to init newrelic NewApplication reason: %v", err)
+	} else {
+       fmt.Println("newrelic init success")
+	}
+	e.Use(nrecho.Middleware(app))
+
 	e.Use(middleware.Logger())
 	cookieStore := sessions.NewCookieStore(secret)
 	cookieStore.Options.Domain = "*.u.isucon.local"
@@ -223,5 +241,37 @@ func errorResponseHandler(err error, c echo.Context) {
 
 	if e := c.JSON(http.StatusInternalServerError, &ErrorResponse{Error: err.Error()}); e != nil {
 		c.Logger().Errorf("%+v", e)
+	}
+}
+
+func createDataStoreSegment(query, collection, operation string, params ...interface{}) newrelic.DatastoreSegment {
+	mySQLConnectionData = NewMySQLConnectionEnv()
+
+	queryParams := make(map[string]interface{})
+	var i = 0
+	for _, param := range params {
+		switch x := param.(type) {
+		case []interface{}:
+			for _, p := range x {
+				queryParams["?_"+strconv.Itoa(i)] = p
+				i++
+			}
+		case interface{}:
+			queryParams["?_"+strconv.Itoa(i)] = x
+			i++
+		default:
+			//ignore
+		}
+	}
+
+	return newrelic.DatastoreSegment{
+		Product:            newrelic.DatastoreMySQL,
+		Collection:         collection,
+		Operation:          operation,
+		ParameterizedQuery: query,
+		QueryParameters:    queryParams,
+		Host:               mySQLConnectionData.Host,
+		PortPathOrID:       mySQLConnectionData.Port,
+		DatabaseName:       mySQLConnectionData.DBName,
 	}
 }
