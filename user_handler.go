@@ -18,6 +18,7 @@ import (
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
+	"github.com/newrelic/go-agent/v3/integrations/nrecho-v4"
 )
 
 const (
@@ -96,22 +97,34 @@ func getIconHandler(c echo.Context) error {
 	}
 	defer tx.Rollback()
 
+	txn := nrecho.FromContext(c)
+	defer txn.End()
+
 	var user UserModel
-	if err := tx.GetContext(ctx, &user, "SELECT * FROM users WHERE name = ?", username); err != nil {
+	selectUserQuery := "SELECT * FROM users WHERE name = ?"
+	selectUserCount := createDataStoreSegment(selectUserQuery, "users", "SELECT", username)
+	selectUserCount.StartTime = txn.StartSegmentNow()
+	if err := tx.GetContext(ctx, &user, selectUserQuery, username); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return echo.NewHTTPError(http.StatusNotFound, "not found user that has the given username")
 		}
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
 	}
+	selectUserCount.End()
+
 
 	var image []byte
-	if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", user.ID); err != nil {
+	selectIconsQuery := "SELECT image FROM icons WHERE user_id = ?"
+	selectIconsCount := createDataStoreSegment(selectIconsQuery, "icons", "SELECT", user.ID)
+	selectIconsCount.StartTime = txn.StartSegmentNow()
+	if err := tx.GetContext(ctx, &image, selectIconsQuery, user.ID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return c.File(fallbackImage)
 		} else {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user icon: "+err.Error())
 		}
 	}
+	selectIconsCount.End()
 
 	return c.Blob(http.StatusOK, "image/jpeg", image)
 }

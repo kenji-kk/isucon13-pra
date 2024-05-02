@@ -245,7 +245,6 @@ func errorResponseHandler(err error, c echo.Context) {
 }
 
 func createDataStoreSegment(query, collection, operation string, params ...interface{}) newrelic.DatastoreSegment {
-	mySQLConnectionData = NewMySQLConnectionEnv()
 
 	queryParams := make(map[string]interface{})
 	var i = 0
@@ -270,8 +269,8 @@ func createDataStoreSegment(query, collection, operation string, params ...inter
 		Operation:          operation,
 		ParameterizedQuery: query,
 		QueryParameters:    queryParams,
-		Host:               mySQLConnectionData.Host,
-		PortPathOrID:       mySQLConnectionData.Port,
-		DatabaseName:       mySQLConnectionData.DBName,
+		Host:               "127.0.0.1",
+		PortPathOrID:       "3306",
+		DatabaseName:       "isupipe",
 	}
 }
