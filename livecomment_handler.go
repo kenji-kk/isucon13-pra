@@ -387,29 +387,27 @@ func moderateHandler(c echo.Context) error {
 	}
 
 	// NGワードにヒットする過去の投稿も全削除する
-	for _, ngword := range ngwords {
-		// ライブコメント一覧取得
-		var livecomments []*LivecommentModel
-		if err := tx.SelectContext(ctx, &livecomments, "SELECT * FROM livecomments where livestream_id = ?", livestreamID); err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livecomments: "+err.Error())
+
+	// ライブコメント一覧取得
+	var deleteLivecommentIds []int64
+	query := `
+	SELECT l.id FROM livecomments l 
+	JOIN ng_words n 
+	ON n.livestream_id = l.livestream_id AND l.comment LIKE CONCAT('%', n.word, '%')
+	where l.livestream_id = ?
+	`
+	if err := tx.SelectContext(ctx, &deleteLivecommentIds, query, livestreamID); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livecomments: "+err.Error())
+	}
+
+	if len(deleteLivecommentIds) > 0 {
+		deleteQuery, args, err := sqlx.In("DELETE FROM livecomments WHERE id in(?)", deleteLivecommentIds)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "sqlx.In: "+err.Error())
 		}
 
-		for _, livecomment := range livecomments {
-			query := `
-			DELETE FROM livecomments
-			WHERE
-			id = ? AND
-			livestream_id = ? AND
-			(SELECT COUNT(*)
-			FROM
-			(SELECT ? AS text) AS texts
-			INNER JOIN
-			(SELECT CONCAT('%', ?, '%')	AS pattern) AS patterns
-			ON texts.text LIKE patterns.pattern) >= 1;
-			`
-			if _, err := tx.ExecContext(ctx, query, livecomment.ID, livestreamID, livecomment.Comment, ngword.Word); err != nil {
-				return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete old livecomments that hit spams: "+err.Error())
-			}
+		if _, err := tx.ExecContext(ctx, deleteQuery, args...); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete old livecomments that hit spams: "+err.Error())
 		}
 	}
 

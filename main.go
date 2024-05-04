@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -20,8 +21,8 @@ import (
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo-contrib/session"
 	echolog "github.com/labstack/gommon/log"
-	"github.com/newrelic/go-agent/v3/newrelic"
 	"github.com/newrelic/go-agent/v3/integrations/nrecho-v4"
+	"github.com/newrelic/go-agent/v3/newrelic"
 )
 
 const (
@@ -100,7 +101,9 @@ func connectDB(logger echo.Logger) (*sqlx.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(10)
+	db.SetMaxOpenConns(50)
+	db.SetMaxIdleConns(50)
+	db.SetConnMaxLifetime(120 * time.Second)
 
 	if err := db.Ping(); err != nil {
 		return nil, err
@@ -132,12 +135,12 @@ func main() {
 	app, err = newrelic.NewApplication(
 		newrelic.ConfigAppName(os.Getenv("NEW_RELIC_APP_NAME")),
 		newrelic.ConfigLicense(os.Getenv("NEW_RELIC_LICENSE_KEY")),
-    	newrelic.ConfigAppLogEnabled(false),
+		newrelic.ConfigAppLogEnabled(false),
 	)
 	if err != nil {
-       fmt.Errorf("failed to init newrelic NewApplication reason: %v", err)
+		fmt.Errorf("failed to init newrelic NewApplication reason: %v", err)
 	} else {
-       fmt.Println("newrelic init success")
+		fmt.Println("newrelic init success")
 	}
 	e.Use(nrecho.Middleware(app))
 
