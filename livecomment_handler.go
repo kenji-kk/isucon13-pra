@@ -30,18 +30,18 @@ type LivecommentModel struct {
 }
 
 type LivecommentModelWithUser struct {
-	ID           int64  `db:"id"`
-	UserID       int64  `db:"user_id"`
-	UserName        string `db:"name"`
-	UserDisplayName string `db:"display_name"`
-	UserDescription string `db:"description"`
-	UserThemeId        int64  `db:"theme_id"`
-	UserDarkMode       bool   `db:"dark_mode"`
+	ID              int64          `db:"id"`
+	UserID          int64          `db:"user_id"`
+	UserName        string         `db:"name"`
+	UserDisplayName string         `db:"display_name"`
+	UserDescription string         `db:"description"`
+	UserThemeId     int64          `db:"theme_id"`
+	UserDarkMode    bool           `db:"dark_mode"`
 	UserIconHash    sql.NullString `db:"icon_hash"`
-	LivestreamID int64  `db:"livestream_id"`
-	Comment      string `db:"comment"`
-	Tip          int64  `db:"tip"`
-	CreatedAt    int64  `db:"created_at"`
+	LivestreamID    int64          `db:"livestream_id"`
+	Comment         string         `db:"comment"`
+	Tip             int64          `db:"tip"`
+	CreatedAt       int64          `db:"created_at"`
 }
 
 type Livecomment struct {
@@ -99,7 +99,6 @@ func getLivecommentsHandler(c echo.Context) error {
 	}
 	defer tx.Rollback()
 
-
 	livestreamModel := LivestreamModel{}
 	if err := tx.GetContext(ctx, &livestreamModel, "SELECT * FROM livestreams WHERE id = ?", livestreamID); err != nil {
 		return err
@@ -144,12 +143,12 @@ func getLivecommentsHandler(c echo.Context) error {
 		}
 
 		commentOwner := User{
-			ID: livecommentModels[i].UserID,
-			Name: livecommentModels[i].UserName,
+			ID:          livecommentModels[i].UserID,
+			Name:        livecommentModels[i].UserName,
 			DisplayName: livecommentModels[i].UserDescription,
 			Description: livecommentModels[i].UserDescription,
 			Theme: Theme{
-				ID:  livecommentModels[i].UserThemeId,
+				ID:       livecommentModels[i].UserThemeId,
 				DarkMode: livecommentModels[i].UserDarkMode,
 			},
 			IconHash: livecommentModels[i].UserIconHash.String,
@@ -492,13 +491,12 @@ func fillLivecommentResponse(ctx context.Context, tx *sqlx.Tx, livecommentModel 
 		if errors.Is(err, sql.ErrNoRows) {
 			return Livecomment{}, echo.NewHTTPError(http.StatusNotFound, "not found user that has the given username")
 		}
-		return Livecomment{},echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
+		return Livecomment{}, echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
 	}
 
 	if !fullUserModel.IconHash.Valid {
 		fullUserModel.IconHash.String = "d9f8294e9d895f81ce62e73dc7d5dff862a4fa40bd4e0fecf53f7526a8edcac0"
 	}
-
 
 	commentOwner := User{
 		ID:          fullUserModel.ID,
@@ -547,13 +545,12 @@ func fillLivecommentReportResponse(ctx context.Context, tx *sqlx.Tx, reportModel
 		if errors.Is(err, sql.ErrNoRows) {
 			return LivecommentReport{}, echo.NewHTTPError(http.StatusNotFound, "not found user that has the given username")
 		}
-		return LivecommentReport{},echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
+		return LivecommentReport{}, echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
 	}
 
 	if !fullUserModel.IconHash.Valid {
 		fullUserModel.IconHash.String = "d9f8294e9d895f81ce62e73dc7d5dff862a4fa40bd4e0fecf53f7526a8edcac0"
 	}
-
 
 	reporter := User{
 		ID:          fullUserModel.ID,
