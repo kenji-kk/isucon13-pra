@@ -29,6 +29,21 @@ type LivecommentModel struct {
 	CreatedAt    int64  `db:"created_at"`
 }
 
+type LivecommentModelWithUser struct {
+	ID           int64  `db:"id"`
+	UserID       int64  `db:"user_id"`
+	UserName        string `db:"name"`
+	UserDisplayName string `db:"display_name"`
+	UserDescription string `db:"description"`
+	UserThemeId        int64  `db:"theme_id"`
+	UserDarkMode       bool   `db:"dark_mode"`
+	UserIconHash    sql.NullString `db:"icon_hash"`
+	LivestreamID int64  `db:"livestream_id"`
+	Comment      string `db:"comment"`
+	Tip          int64  `db:"tip"`
+	CreatedAt    int64  `db:"created_at"`
+}
+
 type Livecomment struct {
 	ID         int64      `json:"id"`
 	User       User       `json:"user"`
@@ -84,7 +99,27 @@ func getLivecommentsHandler(c echo.Context) error {
 	}
 	defer tx.Rollback()
 
-	query := "SELECT * FROM livecomments WHERE livestream_id = ? ORDER BY created_at DESC"
+
+	livestreamModel := LivestreamModel{}
+	if err := tx.GetContext(ctx, &livestreamModel, "SELECT * FROM livestreams WHERE id = ?", livestreamID); err != nil {
+		return err
+	}
+	livestream, err := fillLivestreamResponse(ctx, tx, livestreamModel)
+	if err != nil {
+		return err
+	}
+
+	query := `
+	SELECT 
+	l.*,
+	u.name, u.display_name, u.description,t.id as theme_id, i.icon_hash
+	FROM livecomments l
+	JOIN users u ON u.id = l.user_id
+	LEFT JOIN themes t ON t.user_id = u.id
+	LEFT JOIN icons i ON i.user_id = u.id
+	WHERE l.livestream_id = ?
+	ORDER BY l.created_at DESC
+	`
 	if c.QueryParam("limit") != "" {
 		limit, err := strconv.Atoi(c.QueryParam("limit"))
 		if err != nil {
@@ -93,7 +128,7 @@ func getLivecommentsHandler(c echo.Context) error {
 		query += fmt.Sprintf(" LIMIT %d", limit)
 	}
 
-	livecommentModels := []LivecommentModel{}
+	livecommentModels := []LivecommentModelWithUser{}
 	err = tx.SelectContext(ctx, &livecommentModels, query, livestreamID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c.JSON(http.StatusOK, []*Livecomment{})
@@ -104,7 +139,30 @@ func getLivecommentsHandler(c echo.Context) error {
 
 	livecomments := make([]Livecomment, len(livecommentModels))
 	for i := range livecommentModels {
-		livecomment, err := fillLivecommentResponse(ctx, tx, livecommentModels[i])
+		if !livecommentModels[i].UserIconHash.Valid {
+			livecommentModels[i].UserIconHash.String = "d9f8294e9d895f81ce62e73dc7d5dff862a4fa40bd4e0fecf53f7526a8edcac0"
+		}
+
+		commentOwner := User{
+			ID: livecommentModels[i].UserID,
+			Name: livecommentModels[i].UserName,
+			DisplayName: livecommentModels[i].UserDescription,
+			Description: livecommentModels[i].UserDescription,
+			Theme: Theme{
+				ID:  livecommentModels[i].UserThemeId,
+				DarkMode: livecommentModels[i].UserDarkMode,
+			},
+			IconHash: livecommentModels[i].UserIconHash.String,
+		}
+
+		livecomment := Livecomment{
+			ID:         livecommentModels[i].ID,
+			User:       commentOwner,
+			Livestream: livestream,
+			Comment:    livecommentModels[i].Comment,
+			Tip:        livecommentModels[i].Tip,
+			CreatedAt:  livecommentModels[i].CreatedAt,
+		}
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fil livecomments: "+err.Error())
 		}
