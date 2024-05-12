@@ -421,13 +421,37 @@ func moderateHandler(c echo.Context) error {
 }
 
 func fillLivecommentResponse(ctx context.Context, tx *sqlx.Tx, livecommentModel LivecommentModel) (Livecomment, error) {
-	commentOwnerModel := UserModel{}
-	if err := tx.GetContext(ctx, &commentOwnerModel, "SELECT * FROM users WHERE id = ?", livecommentModel.UserID); err != nil {
-		return Livecomment{}, err
+	fullUserModel := FullUserModel{}
+	var query = `
+	SELECT u.*, t.id as theme_id, t.dark_mode, i.icon_hash
+	FROM users u
+	LEFT JOIN themes t ON t.user_id = u.id
+	LEFT JOIN icons i ON i.user_id = u.id
+	WHERE u.id = ?
+	`
+
+	if err := tx.GetContext(ctx, &fullUserModel, query, livecommentModel.UserID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Livecomment{}, echo.NewHTTPError(http.StatusNotFound, "not found user that has the given username")
+		}
+		return Livecomment{},echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
 	}
-	commentOwner, err := fillUserResponse(ctx, tx, commentOwnerModel)
-	if err != nil {
-		return Livecomment{}, err
+
+	if !fullUserModel.IconHash.Valid {
+		fullUserModel.IconHash.String = "d9f8294e9d895f81ce62e73dc7d5dff862a4fa40bd4e0fecf53f7526a8edcac0"
+	}
+
+
+	commentOwner := User{
+		ID:          fullUserModel.ID,
+		Name:        fullUserModel.Name,
+		DisplayName: fullUserModel.DisplayName,
+		Description: fullUserModel.Description,
+		Theme: Theme{
+			ID:       fullUserModel.ThemeId,
+			DarkMode: fullUserModel.DarkMode,
+		},
+		IconHash: fullUserModel.IconHash.String,
 	}
 
 	livestreamModel := LivestreamModel{}
@@ -452,13 +476,37 @@ func fillLivecommentResponse(ctx context.Context, tx *sqlx.Tx, livecommentModel 
 }
 
 func fillLivecommentReportResponse(ctx context.Context, tx *sqlx.Tx, reportModel LivecommentReportModel) (LivecommentReport, error) {
-	reporterModel := UserModel{}
-	if err := tx.GetContext(ctx, &reporterModel, "SELECT * FROM users WHERE id = ?", reportModel.UserID); err != nil {
-		return LivecommentReport{}, err
+	fullUserModel := FullUserModel{}
+	var query = `
+	SELECT u.*, t.id as theme_id, t.dark_mode, i.icon_hash
+	FROM users u
+	LEFT JOIN themes t ON t.user_id = u.id
+	LEFT JOIN icons i ON i.user_id = u.id
+	WHERE u.id = ?
+	`
+
+	if err := tx.GetContext(ctx, &fullUserModel, query, reportModel.UserID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return LivecommentReport{}, echo.NewHTTPError(http.StatusNotFound, "not found user that has the given username")
+		}
+		return LivecommentReport{},echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
 	}
-	reporter, err := fillUserResponse(ctx, tx, reporterModel)
-	if err != nil {
-		return LivecommentReport{}, err
+
+	if !fullUserModel.IconHash.Valid {
+		fullUserModel.IconHash.String = "d9f8294e9d895f81ce62e73dc7d5dff862a4fa40bd4e0fecf53f7526a8edcac0"
+	}
+
+
+	reporter := User{
+		ID:          fullUserModel.ID,
+		Name:        fullUserModel.Name,
+		DisplayName: fullUserModel.DisplayName,
+		Description: fullUserModel.Description,
+		Theme: Theme{
+			ID:       fullUserModel.ThemeId,
+			DarkMode: fullUserModel.DarkMode,
+		},
+		IconHash: fullUserModel.IconHash.String,
 	}
 
 	livecommentModel := LivecommentModel{}

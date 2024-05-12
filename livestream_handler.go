@@ -485,13 +485,37 @@ func getLivecommentReportsHandler(c echo.Context) error {
 }
 
 func fillLivestreamResponse(ctx context.Context, tx *sqlx.Tx, livestreamModel LivestreamModel) (Livestream, error) {
-	ownerModel := UserModel{}
-	if err := tx.GetContext(ctx, &ownerModel, "SELECT * FROM users WHERE id = ?", livestreamModel.UserID); err != nil {
-		return Livestream{}, err
+	fullUserModel := FullUserModel{}
+	var query = `
+	SELECT u.*, t.id as theme_id, t.dark_mode, i.icon_hash
+	FROM users u
+	LEFT JOIN themes t ON t.user_id = u.id
+	LEFT JOIN icons i ON i.user_id = u.id
+	WHERE u.id = ?
+	`
+
+	if err := tx.GetContext(ctx, &fullUserModel, query, livestreamModel.UserID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Livestream{},echo.NewHTTPError(http.StatusNotFound, "not found user that has the given username")
+		}
+		return Livestream{},echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
 	}
-	owner, err := fillUserResponse(ctx, tx, ownerModel)
-	if err != nil {
-		return Livestream{}, err
+
+	if !fullUserModel.IconHash.Valid {
+		fullUserModel.IconHash.String = "d9f8294e9d895f81ce62e73dc7d5dff862a4fa40bd4e0fecf53f7526a8edcac0"
+	}
+
+
+	owner := User{
+		ID:          fullUserModel.ID,
+		Name:        fullUserModel.Name,
+		DisplayName: fullUserModel.DisplayName,
+		Description: fullUserModel.Description,
+		Theme: Theme{
+			ID:       fullUserModel.ThemeId,
+			DarkMode: fullUserModel.DarkMode,
+		},
+		IconHash: fullUserModel.IconHash.String,
 	}
 
 	var livestreamTagModels []*LivestreamTagModel

@@ -37,6 +37,17 @@ type UserModel struct {
 	HashedPassword string `db:"password"`
 }
 
+type FullUserModel struct {
+	ID             int64  `db:"id"`
+	Name           string `db:"name"`
+	DisplayName    string `db:"display_name"`
+	Description    string `db:"description"`
+	HashedPassword string `db:"password"`
+	ThemeId        int64  `db:"theme_id"`
+	DarkMode       bool   `db:"dark_mode"`
+	IconHash       sql.NullString `db:"icon_hash"`
+}
+
 type User struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
@@ -192,18 +203,37 @@ func getMeHandler(c echo.Context) error {
 	}
 	defer tx.Rollback()
 
-	userModel := UserModel{}
-	err = tx.GetContext(ctx, &userModel, "SELECT * FROM users WHERE id = ?", userID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return echo.NewHTTPError(http.StatusNotFound, "not found user that has the userid in session")
-	}
-	if err != nil {
+	fullUserModel := FullUserModel{}
+	var query = `
+	SELECT u.*, t.id as theme_id, t.dark_mode, i.icon_hash
+	FROM users u
+	LEFT JOIN themes t ON t.user_id = u.id
+	LEFT JOIN icons i ON i.user_id = u.id
+	WHERE u.id = ?
+	`
+
+	if err := tx.GetContext(ctx, &fullUserModel, query, userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return echo.NewHTTPError(http.StatusNotFound, "not found user that has the given username")
+		}
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
 	}
 
-	user, err := fillUserResponse(ctx, tx, userModel)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fill user: "+err.Error())
+	if !fullUserModel.IconHash.Valid {
+		fullUserModel.IconHash.String = "d9f8294e9d895f81ce62e73dc7d5dff862a4fa40bd4e0fecf53f7526a8edcac0"
+	}
+
+
+	user := User{
+		ID:          fullUserModel.ID,
+		Name:        fullUserModel.Name,
+		DisplayName: fullUserModel.DisplayName,
+		Description: fullUserModel.Description,
+		Theme: Theme{
+			ID:       fullUserModel.ThemeId,
+			DarkMode: fullUserModel.DarkMode,
+		},
+		IconHash: fullUserModel.IconHash.String,
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -364,17 +394,37 @@ func getUserHandler(c echo.Context) error {
 	}
 	defer tx.Rollback()
 
-	userModel := UserModel{}
-	if err := tx.GetContext(ctx, &userModel, "SELECT * FROM users WHERE name = ?", username); err != nil {
+	fullUserModel := FullUserModel{}
+	var query = `
+	SELECT u.*, t.id as theme_id, t.dark_mode, i.icon_hash
+	FROM users u
+	LEFT JOIN themes t ON t.user_id = u.id
+	LEFT JOIN icons i ON i.user_id = u.id
+	WHERE u.name = ?
+	`
+
+	if err := tx.GetContext(ctx, &fullUserModel, query, username); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return echo.NewHTTPError(http.StatusNotFound, "not found user that has the given username")
 		}
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
 	}
 
-	user, err := fillUserResponse(ctx, tx, userModel)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fill user: "+err.Error())
+	if !fullUserModel.IconHash.Valid {
+		fullUserModel.IconHash.String = "d9f8294e9d895f81ce62e73dc7d5dff862a4fa40bd4e0fecf53f7526a8edcac0"
+	}
+
+
+	user := User{
+		ID:          fullUserModel.ID,
+		Name:        fullUserModel.Name,
+		DisplayName: fullUserModel.DisplayName,
+		Description: fullUserModel.Description,
+		Theme: Theme{
+			ID:       fullUserModel.ThemeId,
+			DarkMode: fullUserModel.DarkMode,
+		},
+		IconHash: fullUserModel.IconHash.String,
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -420,7 +470,7 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 		if !errors.Is(err, sql.ErrNoRows) {
 			return User{}, err
 		}
-		
+
 		iconHash = "d9f8294e9d895f81ce62e73dc7d5dff862a4fa40bd4e0fecf53f7526a8edcac0"
 	}
 

@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -142,15 +144,37 @@ func postReactionHandler(c echo.Context) error {
 }
 
 func fillReactionResponse(ctx context.Context, tx *sqlx.Tx, reactionModel ReactionModel) (Reaction, error) {
-	userModel := UserModel{}
-	if err := tx.GetContext(ctx, &userModel, "SELECT * FROM users WHERE id = ?", reactionModel.UserID); err != nil {
-		return Reaction{}, err
-	}
-	user, err := fillUserResponse(ctx, tx, userModel)
-	if err != nil {
-		return Reaction{}, err
+	fullUserModel := FullUserModel{}
+	var query = `
+	SELECT u.*, t.id as theme_id, t.dark_mode, i.icon_hash
+	FROM users u
+	LEFT JOIN themes t ON t.user_id = u.id
+	LEFT JOIN icons i ON i.user_id = u.id
+	WHERE u.id = ?
+	`
+
+	if err := tx.GetContext(ctx, &fullUserModel, query, reactionModel.UserID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Reaction{}, echo.NewHTTPError(http.StatusNotFound, "not found user that has the given username")
+		}
+		return Reaction{}, echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
 	}
 
+	if !fullUserModel.IconHash.Valid {
+		fullUserModel.IconHash.String = "d9f8294e9d895f81ce62e73dc7d5dff862a4fa40bd4e0fecf53f7526a8edcac0"
+	}
+
+	user := User{
+		ID:          fullUserModel.ID,
+		Name:        fullUserModel.Name,
+		DisplayName: fullUserModel.DisplayName,
+		Description: fullUserModel.Description,
+		Theme: Theme{
+			ID:       fullUserModel.ThemeId,
+			DarkMode: fullUserModel.DarkMode,
+		},
+		IconHash: fullUserModel.IconHash.String,
+	}
 	livestreamModel := LivestreamModel{}
 	if err := tx.GetContext(ctx, &livestreamModel, "SELECT * FROM livestreams WHERE id = ?", reactionModel.LivestreamID); err != nil {
 		return Reaction{}, err
